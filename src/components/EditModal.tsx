@@ -114,17 +114,16 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
   };
 
   const handleApplyMask = async () => {
-    if (!maskCanvasRef.current || !cropDetails || !croppedImageX) {
-      alert('Please create a crop and draw a mask first');
+    if (!maskCanvasRef.current || !activeImage) {
+      alert('Please draw a mask first');
       return;
     }
 
     try {
       const blendedImage = await ImageProcessor.applyMask(
         image.upscaledUrl!,
-        croppedImageX,
-        maskCanvasRef.current,
-        cropDetails
+        activeImage,
+        maskCanvasRef.current
       );
       
       setActiveImage(blendedImage);
