@@ -14,6 +14,7 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
   const [activeImage, setActiveImage] = useState<string>(image.upscaledUrl || '');
   const [isDrawing, setIsDrawing] = useState(false);
   const [brushSize, setBrushSize] = useState(20);
+  const [isFinalImageReady, setIsFinalImageReady] = useState(false);
   
   const imgRef = useRef<HTMLImageElement>(null);
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -127,6 +128,7 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
       );
       
       setActiveImage(blendedImage);
+      setIsFinalImageReady(true);
       
       // Clear the mask canvas after applying
       const ctx = maskCanvasRef.current.getContext('2d');
@@ -170,12 +172,17 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
         );
         
         setActiveImage(compositedImage);
+        setIsFinalImageReady(false); // Reset since this is just a test composite
       }
     } catch (error) {
       console.error('Failed to composite image:', error);
     }
   };
 
+  const handleDownloadFinalImage = () => {
+    const filename = `${image.originalName}_jewelryfree_edited.png`;
+    ImageProcessor.downloadImage(activeImage, filename);
+  };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
@@ -293,6 +300,17 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
         {/* Footer */}
         <div className="p-4 border-t border-gray-200 bg-gray-50">
           <div className="flex justify-end">
+            <button
+              onClick={handleDownloadFinalImage}
+              disabled={!isFinalImageReady}
+              className={`px-6 py-2 font-medium rounded-md transition-colors ${
+                isFinalImageReady
+                  ? 'bg-green-600 text-white hover:bg-green-700'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              Download Final Image
+            </button>
             <img
               onClick={onClose}
               className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
