@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { X, Brush } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { X, Upload } from 'lucide-react';
 import { UploadedImage } from '../types';
 import { ImageProcessor } from '../services/imageProcessor';
 
@@ -9,315 +9,132 @@ interface EditModalProps {
 }
 
 export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
-  // Determine the best source image to start with. Prefer the upscaled version.
-  // This now correctly falls back to the original preview if no processed URLs exist.
-  const sourceImageUrl = image.upscaledUrl || image.jewelryRemovedUrl || image.preview;
+  const sourceImageUrl = image.jewelryRemovedUrl || image.preview;
 
-  const [croppedImageX, setCroppedImageX] = useState<string | null>(null);
-  const [cropDetails, setCropDetails] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-  const [activeImage, setActiveImage] = useState<string>(sourceImageUrl || '');
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [brushSize, setBrushSize] = useState(20);
-  const [isFinalImageReady, setIsFinalImageReady] = useState(false);
+  const [prompt, setPrompt] = useState('');
+  const [productImage, setProductImage] = useState<File | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   
+  // For showing the dot on the screen
+  const [displayHotspot, setDisplayHotspot] = useState<{ x: number, y: number } | null>(null);
+  // For sending coordinates to the AI
+  const [editHotspot, setEditHotspot] = useState<{ x: number, y: number } | null>(null);
+
+  const [activeImage, setActiveImage] = useState<string>(sourceImageUrl);
   const imgRef = useRef<HTMLImageElement>(null);
-  const maskCanvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Update mask canvas dimensions when image loads or changes
-  useEffect(() => {
-    const updateCanvasDimensions = () => {
-      if (imgRef.current && maskCanvasRef.current) {
-        const img = imgRef.current;
-        const canvas = maskCanvasRef.current;
-        canvas.width = img.offsetWidth;
-        canvas.height = img.offsetHeight;
-        
-        // Clear the canvas
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
-      }
-    };
-
-    // Update dimensions after image loads
-    if (imgRef.current) {
-      if (imgRef.current.complete) {
-        updateCanvasDimensions();
-      } else {
-        imgRef.current.onload = updateCanvasDimensions;
-      }
-    }
-  }, [activeImage]);
-
-  const handleImageClick = async (e: React.MouseEvent<HTMLImageElement>) => {
+  const handleImageClick = (e: React.MouseEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     const rect = img.getBoundingClientRect();
-    
-    // Get click coordinates relative to the displayed image
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
-    
-    // Calculate the scale factors to convert to natural image coordinates
-    const scaleX = img.naturalWidth / img.offsetWidth;
-    const scaleY = img.naturalHeight / img.offsetHeight;
-    
-    // Convert to natural image coordinates
-    const centerX = Math.round(clickX * scaleX);
-    const centerY = Math.round(clickY * scaleY);
-    
-    try {
-      const result = await ImageProcessor.cropSquareFromCenter(
-        sourceImageUrl!,
-        centerX,
-        centerY,
-        1024
-      );
-      setCroppedImageX(result.dataUrl);
-      setCropDetails(result.cropDetails);
-    } catch (error) {
-      console.error('Failed to crop image:', error);
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+
+    setDisplayHotspot({ x: offsetX, y: offsetY });
+
+    const { naturalWidth, naturalHeight, offsetWidth, offsetHeight } = img;
+    const scaleX = naturalWidth / offsetWidth;
+    const scaleY = naturalHeight / offsetHeight;
+
+    setEditHotspot({ x: Math.round(offsetX * scaleX), y: Math.round(offsetY * scaleY) });
+  };
+  
+  const handleProductImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setProductImage(e.target.files[0]);
     }
   };
-
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!maskCanvasRef.current) return;
-    
-    const canvas = maskCanvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.beginPath();
-    ctx.arc(x, y, brushSize / 2, 0, 2 * Math.PI);
-    ctx.fill();
-  };
-
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    setIsDrawing(true);
-    draw(e);
-  };
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (isDrawing) {
-      draw(e);
-    }
-  };
-
-  const handleMouseUp = () => {
-    setIsDrawing(false);
-  };
-
-  const handleMouseLeave = () => {
-    setIsDrawing(false);
-  };
-
-  const handleApplyMask = async () => {
-    if (!maskCanvasRef.current || !activeImage) {
-      alert('Please draw a mask first');
-      return;
-    }
-
-    try {
-      const blendedImage = await ImageProcessor.applyMask(
-        sourceImageUrl!,
-        activeImage,
-        maskCanvasRef.current
-      );
+  
+  const handleGenerate = async () => {
+      if (!editHotspot) {
+          alert("Please click on the image to select a location for the product placement.");
+          return;
+      }
+      if (!prompt.trim() && !productImage) {
+          alert("Please provide a text prompt or a product image.");
+          return;
+      }
       
-      setActiveImage(blendedImage);
-      setIsFinalImageReady(true);
+      setIsLoading(true);
       
-      // Clear the mask canvas after applying
-      const ctx = maskCanvasRef.current.getContext('2d');
-      if (ctx) {
-        ctx.clearRect(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
-      }
-    } catch (error) {
-      console.error('Failed to apply mask:', error);
-      alert('Failed to apply mask. Please try again.');
-    }
+      // We will create this function in the next step.
+      // const result = await ImageProcessor.generateProductPlacement(
+      //   activeImage, 
+      //   productImage, 
+      //   prompt, 
+      //   editHotspot
+      // );
+      
+      // For now, just log it.
+      console.log("Generating with:", {
+          prompt,
+          productImage,
+          hotspot: editHotspot
+      });
+      
+      // Simulate a delay
+      setTimeout(() => {
+        setIsLoading(false);
+        alert("AI generation is not connected yet. See console for details.");
+      }, 2000);
   };
 
-  const clearMask = () => {
-    if (maskCanvasRef.current) {
-      const ctx = maskCanvasRef.current.getContext('2d');
-      if (ctx) {
-        ctx.clearRect(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
-      }
-    }
-  };
-
-  // Simulate nanoBananaResultY for testing (temporary)
-  const handleTestComposite = async () => {
-    if (!cropDetails) return;
-    
-    try {
-      // Create a simple colored square as placeholder replacement
-      const canvas = document.createElement('canvas');
-      canvas.width = 1024;
-      canvas.height = 1024;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.fillStyle = '#ff6b6b'; // Red color as placeholder
-        ctx.fillRect(0, 0, 1024, 1024);
-        const placeholderDataUrl = canvas.toDataURL('image/png');
-        
-        const compositedImage = await ImageProcessor.replaceArea(
-          sourceImageUrl!,
-          placeholderDataUrl,
-          cropDetails
-        );
-        
-        setActiveImage(compositedImage);
-        setIsFinalImageReady(false); // Reset since this is just a test composite
-      }
-    } catch (error) {
-      console.error('Failed to composite image:', error);
-    }
-  };
-
-  const handleDownloadFinalImage = () => {
-    const filename = `${image.originalName}_jewelryfree_edited.png`;
-    ImageProcessor.downloadImage(activeImage, filename);
-  };
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black bg-opacity-75"
-        onClick={onClose}
-      />
-      
-      {/* Modal Content */}
-      <div className="relative bg-white rounded-lg shadow-2xl max-w-6xl max-h-[90vh] w-full mx-4 overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">
-            Refine Image: {image.originalName}
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-500" />
-          </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75">
+      <div className="bg-white rounded-lg shadow-2xl max-w-4xl w-full mx-4 flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h2 className="text-xl font-semibold">Product Placement: {image.originalName}</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full"><X /></button>
+        </div>
+
+        <div className="p-6 flex-grow overflow-y-auto">
+          <div className="relative w-fit mx-auto cursor-crosshair" onClick={handleImageClick}>
+            <img ref={imgRef} src={activeImage} alt="Editing area" className="max-h-[50vh] rounded-md" />
+            {displayHotspot && (
+              <div 
+                className="absolute rounded-full w-6 h-6 bg-blue-500/50 border-2 border-white pointer-events-none -translate-x-1/2 -translate-y-1/2"
+                style={{ left: `${displayHotspot.x}px`, top: `${displayHotspot.y}px` }}
+              >
+                <div className="absolute inset-0 rounded-full w-full h-full animate-ping bg-blue-400"></div>
+              </div>
+            )}
+          </div>
         </div>
         
-        {/* Image Display */}
-        <div className="p-6 bg-gray-50">
-          <div className="flex justify-center items-center mb-4">
-            <div className="relative aspect-square max-h-[60vh] max-w-[60vh] overflow-hidden rounded-lg shadow-lg">
-              <img
-                ref={imgRef}
-                src={activeImage}
-                alt={`Refining ${image.originalName}`}
-                className="max-w-full max-h-full object-contain cursor-crosshair"
-                onClick={handleImageClick}
+        <div className="p-4 border-t bg-gray-50">
+          <div className="flex items-start gap-4">
+            <div className="flex-grow">
+              <input
+                type="text"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder={editHotspot ? "e.g., 'a can of soda with a red label'" : "First, click a point on the image"}
+                className="w-full border border-gray-300 rounded-lg p-3 text-base focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                disabled={!editHotspot || isLoading}
               />
-              <canvas
-                ref={maskCanvasRef}
-                className="absolute top-0 left-0 cursor-crosshair"
-                style={{ pointerEvents: croppedImageX ? 'auto' : 'none' }}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseLeave}
-              />
+              <p className="text-xs text-gray-500 mt-1">Describe the product or the change you want to make.</p>
             </div>
-          </div>
-          
-          {/* Masking Controls */}
-          {croppedImageX && (
-            <div className="flex justify-center items-center space-x-4 mb-4">
-              <div className="flex items-center space-x-2">
-                <Brush className="w-4 h-4 text-gray-600" />
-                <label className="text-sm font-medium text-gray-700">Brush Size:</label>
-                <input
-                  type="range"
-                  min="5"
-                  max="50"
-                  value={brushSize}
-                  onChange={(e) => setBrushSize(Number(e.target.value))}
-                  className="w-20"
-                />
-                <span className="text-sm text-gray-600 w-8">{brushSize}</span>
-              </div>
-              
-              <button
-                onClick={clearMask}
-                className="px-3 py-1 bg-gray-500 text-white text-sm rounded-md hover:bg-gray-600 transition-colors"
+
+            <div className="flex-shrink-0">
+              <input type="file" ref={fileInputRef} onChange={handleProductImageSelect} className="hidden" accept="image/*" />
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-2 px-4 py-3 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition-colors"
+                disabled={isLoading}
               >
-                Clear Mask
+                <Upload className="w-5 h-5" />
+                {productImage ? "Change Image" : "Add Image"}
               </button>
-              
-              <button
-                onClick={handleApplyMask}
-                className="px-4 py-2 bg-green-600 text-white font-medium rounded-md hover:bg-green-700 transition-colors"
-              >
-                Apply Mask
-              </button>
+              {productImage && <p className="text-xs text-center mt-1 truncate max-w-[120px]">{productImage.name}</p>}
             </div>
-          )}
-        </div>
-        
-        {/* Instructions */}
-        {croppedImageX && (
-          <div className="px-6 py-3 bg-blue-50 border-t border-blue-200">
-            <p className="text-sm text-blue-800">
-              <strong>Instructions:</strong> Paint over the areas where you want to keep the generated content. 
-              The mask will create a soft, feathered blend between the original and generated images.
-            </p>
-          </div>
-        )}
-        
-        {/* Cropped Image Preview */}
-        {croppedImageX && (
-          <div className="p-6 border-t border-gray-200 bg-gray-50">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Cropped Selection (1024x1024)</h3>
-            <div className="flex justify-center items-center space-x-6">
-              <div className="w-64 h-64 border border-gray-300 rounded-lg overflow-hidden shadow-sm">
-                <img
-                  src={croppedImageX}
-                  alt="Cropped selection"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              {/* Temporary test button for compositing */}
-              <button
-                onClick={handleTestComposite}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
-                disabled={!cropDetails}
-              >
-                Test Composite (Red Square)
-              </button>
-            </div>
-          </div>
-        )}
-        
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-200 bg-gray-50">
-          <div className="flex justify-end">
-            <button
-              onClick={handleDownloadFinalImage}
-              disabled={!isFinalImageReady}
-              className={`px-6 py-2 font-medium rounded-md transition-colors ${
-                isFinalImageReady
-                  ? 'bg-green-600 text-white hover:bg-green-700'
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              }`}
+
+            <button 
+              onClick={handleGenerate}
+              className="px-8 py-3 bg-blue-600 text-white font-bold text-base rounded-lg transition-colors hover:bg-blue-700 disabled:bg-blue-400"
+              disabled={isLoading || !editHotspot || (!prompt.trim() && !productImage)}
             >
-              Download Final Image
+              {isLoading ? "Generating..." : "Generate"}
             </button>
-            <img
-              onClick={onClose}
-              className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
-            />
           </div>
         </div>
       </div>
