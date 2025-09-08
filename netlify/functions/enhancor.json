@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "enhancor": {
+      "timeout": 180
+    }
+  }
+}
