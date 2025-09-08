@@ -1,13 +1,14 @@
 import React from 'react';
-import { Download, AlertCircle, CheckCircle, Clock, Loader, Image } from 'lucide-react';
+import { Download, AlertCircle, CheckCircle, Clock, Loader, Image, Sparkles } from 'lucide-react';
 import { UploadedImage } from '../types';
 import { ImageProcessor } from '../services/imageProcessor';
 
 interface ProcessingQueueProps {
   images: UploadedImage[];
+  onRefineImage: (image: UploadedImage) => void;
 }
 
-export const ProcessingQueue: React.FC<ProcessingQueueProps> = ({ images }) => {
+export const ProcessingQueue: React.FC<ProcessingQueueProps> = ({ images, onRefineImage }) => {
   const getStatusIcon = (status: UploadedImage['status']) => {
     switch (status) {
       case 'pending':
@@ -124,6 +125,16 @@ export const ProcessingQueue: React.FC<ProcessingQueueProps> = ({ images }) => {
                       >
                         <Download className="w-4 h-4" />
                         <span>Download Upscaled</span>
+                      </button>
+                    )}
+                    
+                    {image.upscaledUrl && (
+                      <button
+                        onClick={() => onRefineImage(image)}
+                        className="flex items-center space-x-2 px-3 py-2 bg-purple-600 text-white text-sm rounded-md hover:bg-purple-700 transition-colors"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        <span>Refine Image</span>
                       </button>
                     )}
                   </div>

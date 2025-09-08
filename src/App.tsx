@@ -2,6 +2,7 @@ import React from 'react';
 import { Header } from './components/Header';
 import { FileUpload } from './components/FileUpload';
 import { ProcessingQueue } from './components/ProcessingQueue';
+import { EditModal } from './components/EditModal';
 import { Statistics } from './components/Statistics';
 import { useImageProcessing } from './hooks/useImageProcessing';
 import { Play, Trash2 } from 'lucide-react';
@@ -10,6 +11,8 @@ function App() {
   const {
     images,
     isProcessing,
+    editingImage,
+    setEditingImage,
     addImages,
     removeImage,
     processAllPendingImages,
@@ -77,7 +80,10 @@ function App() {
           )}
 
           {/* Processing Queue */}
-          <ProcessingQueue images={images} />
+          <ProcessingQueue 
+            images={images} 
+            onRefineImage={setEditingImage}
+          />
 
           {/* Information Section */}
           <div className="bg-white rounded-xl border border-gray-200 p-8">
@@ -124,6 +130,14 @@ function App() {
           </div>
         </div>
       </main>
+      
+      {/* Edit Modal */}
+      {editingImage && (
+        <EditModal 
+          image={editingImage} 
+          onClose={() => setEditingImage(null)} 
+        />
+      )}
     </div>
   );
 }

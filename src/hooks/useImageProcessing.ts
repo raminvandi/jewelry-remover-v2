@@ -5,6 +5,7 @@ import { ImageProcessor } from '../services/imageProcessor';
 export const useImageProcessing = () => {
   const [images, setImages] = useState<UploadedImage[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [editingImage, setEditingImage] = useState<UploadedImage | null>(null);
 
   const addImages = useCallback((newImages: UploadedImage[]) => {
     setImages(prev => [...prev, ...newImages]);
@@ -128,6 +129,8 @@ export const useImageProcessing = () => {
   return {
     images,
     isProcessing,
+    editingImage,
+    setEditingImage,
     addImages,
     removeImage,
     processAllPendingImages,
