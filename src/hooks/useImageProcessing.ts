@@ -27,61 +27,17 @@ export const useImageProcessing = () => {
     ));
   }, []);
 
-  const processImage = useCallback(async (image: UploadedImage) => {
-    try {
-      // Stage 1: Remove jewelry
-      updateImageStatus(image.id, { 
-        status: 'processing-stage1', 
-        progress: 25 
-      });
-      
-      // NOTE: We will need a way to get a hotspot. For now, we'll keep the default.
-      // A future improvement could be asking the user to click on the jewelry first.
-      const defaultHotspot = { x: 500, y: 500 };
-      const jewelryRemovalResult = await ImageProcessor.removeJewelry(image.file, defaultHotspot);
-      
-      if (!jewelryRemovalResult.success || !jewelryRemovalResult.imageUrl) {
-        updateImageStatus(image.id, {
-          status: 'error',
-          error: jewelryRemovalResult.error || 'Failed to remove jewelry',
-        });
-        return;
-      }
+  const _performJewelryRemoval = async (image: UploadedImage): Promise<string | null> => {
+    updateImageStatus(image.id, { status: 'processing-stage1', progress: 10 });
+    const defaultHotspot = { x: 500, y: 500 }; // This can be improved later
+    const result = await ImageProcessor.removeJewelry(image.file, defaultHotspot);
 
-      // --- THIS IS THE KEY CHANGE ---
-      // Instead of continuing, set the status to 'awaiting_choice' and finish.
-      updateImageStatus(image.id, {
-        status: 'awaiting_choice',
-        progress: 100, // Progress of this stage is 100%
-        jewelryRemovedUrl: jewelryRemovalResult.imageUrl,
-      });
-
-    } catch (error) {
-      updateImageStatus(image.id, {
-        status: 'error',
-        error: error instanceof Error ? error.message : 'Processing failed',
-      });
+    if (!result.success || !result.imageUrl) {
+      updateImageStatus(image.id, { status: 'error', error: result.error || 'Jewelry removal failed.' });
+      return null;
     }
-  }, [updateImageStatus]);
-
-  const processAllPendingImages = useCallback(async () => {
-    setIsProcessing(true);
-    const pendingImages = images.filter(img => img.status === 'pending');
-    
-    // Process images in parallel with a concurrency limit
-    const concurrency = 3;
-    const chunks = [];
-    
-    for (let i = 0; i < pendingImages.length; i += concurrency) {
-      chunks.push(pendingImages.slice(i, i + concurrency));
-    }
-
-    for (const chunk of chunks) {
-      await Promise.all(chunk.map(processImage));
-    }
-    
-    setIsProcessing(false);
-  }, [images, processImage]);
+    return result.imageUrl;
+  };
 
   const clearAll = useCallback(() => {
     images.forEach(image => {
@@ -93,39 +49,53 @@ export const useImageProcessing = () => {
   }, [images]);
 
   const startUpscaleWorkflow = useCallback(async (image: UploadedImage) => {
-    if (!image.jewelryRemovedUrl) {
-      console.error("Cannot start upscale workflow without a jewelry-removed image.");
-      return;
+    setIsProcessing(true);
+    const jewelryRemovedUrl = await _performJewelryRemoval(image);
+
+    if (!jewelryRemovedUrl) {
+      setIsProcessing(false);
+      return; // Error was already set in the helper function
     }
 
+    updateImageStatus(image.id, { status: 'processing-stage2', progress: 50, jewelryRemovedUrl });
+    
+
     try {
-      updateImageStatus(image.id, { status: 'processing-stage2', progress: 65 });
-      const publicUrl = await ImageProcessor.uploadImageForPublicUrl(image.jewelryRemovedUrl);
+      const publicUrl = await ImageProcessor.uploadImageForPublicUrl(jewelryRemovedUrl);
+      updateImageStatus(image.id, { progress: 75 });
 
-      updateImageStatus(image.id, { progress: 80 });
       const upscalingResult = await ImageProcessor.upscaleImage(publicUrl);
-
-      if (!upscalingResult.success) {
-        throw new Error(upscalingResult.error || "Upscaling failed");
-      }
+      if (!upscalingResult.success) throw new Error(upscalingResult.error);
 
       updateImageStatus(image.id, {
         status: 'completed',
         progress: 100,
-        upscaledUrl: upscalingResult.imageUrl,
-        error: undefined
+        upscaledUrl: upscalingResult.imageUrl
       });
     } catch (error) {
-      updateImageStatus(image.id, {
-        status: 'error',
-        error: error instanceof Error ? error.message : 'Upscaling process failed',
-      });
+      updateImageStatus(image.id, { status: 'error', error: error instanceof Error ? error.message : 'Upscale failed.' });
     }
+    setIsProcessing(false);
   }, [updateImageStatus]);
 
-  const startProductPlacementWorkflow = useCallback((image: UploadedImage) => {
-    setEditingImage(image);
-  }, []);
+  const startProductPlacementWorkflow = useCallback(async (image: UploadedImage) => {
+    setIsProcessing(true);
+    const jewelryRemovedUrl = await _performJewelryRemoval(image);
+
+    if (!jewelryRemovedUrl) {
+      setIsProcessing(false);
+      return;
+    }
+    
+    // Update the image object with the result before opening the modal
+    const updatedImage = { ...image, jewelryRemovedUrl, status: 'completed' as const };
+    updateImageStatus(image.id, updatedImage);
+
+    // Now open the modal with the fully prepared image object
+    setEditingImage(updatedImage);
+    setIsProcessing(false);
+  }, [updateImageStatus]);
+
   return {
     images,
     isProcessing,
@@ -133,7 +103,6 @@ export const useImageProcessing = () => {
     setEditingImage,
     addImages,
     removeImage,
-    processAllPendingImages,
     clearAll,
     startUpscaleWorkflow,
     startProductPlacementWorkflow
