@@ -29,12 +29,14 @@ export const useImageProcessing = () => {
 
   const processImage = useCallback(async (image: UploadedImage) => {
     try {
-      // Stage 1: Remove jewelry (This part is correct and stays the same)
+      // Stage 1: Remove jewelry
       updateImageStatus(image.id, { 
         status: 'processing-stage1', 
         progress: 25 
       });
       
+      // NOTE: We will need a way to get a hotspot. For now, we'll keep the default.
+      // A future improvement could be asking the user to click on the jewelry first.
       const defaultHotspot = { x: 500, y: 500 };
       const jewelryRemovalResult = await ImageProcessor.removeJewelry(image.file, defaultHotspot);
       
@@ -42,58 +44,22 @@ export const useImageProcessing = () => {
         updateImageStatus(image.id, {
           status: 'error',
           error: jewelryRemovalResult.error || 'Failed to remove jewelry',
-          progress: 0
         });
         return;
       }
 
+      // --- THIS IS THE KEY CHANGE ---
+      // Instead of continuing, set the status to 'awaiting_choice' and finish.
       updateImageStatus(image.id, {
-        progress: 50,
-        jewelryRemovedUrl: jewelryRemovalResult.imageUrl
-      });
-
-      // --- START OF THE FIX ---
-
-      // Intermediate Step: Upload to imgbb to get a public URL
-      updateImageStatus(image.id, { 
-        status: 'processing-stage2', // Reuse this status for user feedback
-        progress: 65, // Update progress
-      });
-
-      const publicUrl = await ImageProcessor.uploadImageForPublicUrl(jewelryRemovalResult.imageUrl);
-
-      // Stage 2: Upscale image
-      updateImageStatus(image.id, { 
-        status: 'processing-stage2', 
-        progress: 80 
-      });
-
-      // This now sends the public URL, not the large data string
-      const upscalingResult = await ImageProcessor.upscaleImage(publicUrl);
-
-      // --- END OF THE FIX ---
-
-      if (!upscalingResult.success) {
-        updateImageStatus(image.id, {
-          status: 'completed',
-          progress: 100,
-          error: `Upscaling failed: ${upscalingResult.error}`
-        });
-        return;
-      }
-
-      updateImageStatus(image.id, {
-        status: 'completed',
-        progress: 100,
-        upscaledUrl: upscalingResult.imageUrl,
-        error: undefined
+        status: 'awaiting_choice',
+        progress: 100, // Progress of this stage is 100%
+        jewelryRemovedUrl: jewelryRemovalResult.imageUrl,
       });
 
     } catch (error) {
       updateImageStatus(image.id, {
         status: 'error',
         error: error instanceof Error ? error.message : 'Processing failed',
-        progress: 0
       });
     }
   }, [updateImageStatus]);
