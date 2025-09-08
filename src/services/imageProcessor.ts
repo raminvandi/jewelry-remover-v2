@@ -215,6 +215,69 @@ Guidelines:
     );
   }
 
+  static async processWithNanoBanana(base64Image: string, prompt: string): Promise<ProcessingResult> {
+    try {
+      const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+      if (!GEMINI_API_KEY) {
+        throw new Error("Gemini API key is missing.");
+      }
+
+      const systemPrompt = `You are an expert, creative photo editor AI. Your task is to perform an edit on the provided image based on the user's request.
+User Request: "${prompt}"
+Guidelines:
+The edit must be creative and high-quality.
+The output image MUST be the same dimensions as the input image (1024x1024).
+Blend the edit realistically unless a specific artistic style is requested.
+Output ONLY the final edited image. Do not return text.`;
+
+      const requestBody = {
+        contents: [{
+          parts: [
+            { text: systemPrompt },
+            { inline_data: { mime_type: 'image/png', data: base64Image.split(',')[1] } }
+          ]
+        }]
+      };
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Nano Banana (Gemini) API error: ${response.status} - ${errorText}`);
+      }
+
+      const data: GeminiResponse = await response.json();
+      
+      // Robust response handling
+      const candidate = data.candidates?.[0];
+      if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+        throw new Error(`AI generation stopped for reason: ${candidate.finishReason}`);
+      }
+
+      const imagePart = candidate?.content?.parts?.find(p => p.inline_data || p.inlineData);
+      if (!imagePart) {
+        throw new Error('AI response did not contain an image.');
+      }
+
+      const imageData = (imagePart.inline_data || imagePart.inlineData)!.data;
+      const mimeType = (imagePart.inline_data || imagePart.inlineData)!.mime_type;
+      const imageUrl = `data:${mimeType};base64,${imageData}`;
+
+      return { success: true, imageUrl };
+
+    } catch (error) {
+      console.error('Nano Banana (Gemini) Error:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error during AI generation' };
+    }
+  }
+
   static downloadImage(url: string, filename: string): void {
     const link = document.createElement('a');
     link.href = url;
