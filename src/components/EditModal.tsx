@@ -10,7 +10,8 @@ interface EditModalProps {
 
 export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
   // Determine the best source image to start with. Prefer the upscaled version.
-  const sourceImageUrl = image.upscaledUrl || image.jewelryRemovedUrl;
+  // This now correctly falls back to the original preview if no processed URLs exist.
+  const sourceImageUrl = image.upscaledUrl || image.jewelryRemovedUrl || image.preview;
 
   const [croppedImageX, setCroppedImageX] = useState<string | null>(null);
   const [cropDetails, setCropDetails] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -215,7 +216,7 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
               <img
                 ref={imgRef}
                 src={activeImage}
-                alt={`Upscaled ${image.originalName}`}
+                alt={`Refining ${image.originalName}`}
                 className="max-w-full max-h-full object-contain cursor-crosshair"
                 onClick={handleImageClick}
               />
