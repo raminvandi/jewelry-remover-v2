@@ -224,6 +224,113 @@ Guidelines:
     document.body.removeChild(link);
   }
 
+  static async applyMask(
+    originalUpscaledImageUrl: string,
+    replacementYImageUrl: string,
+    maskCanvas: HTMLCanvasElement,
+    cropData: { x: number; y: number; width: number; height: number }
+  ): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const originalImg = new Image();
+      const replacementImg = new Image();
+      let loadedCount = 0;
+
+      const onImageLoad = () => {
+        loadedCount++;
+        if (loadedCount === 2) {
+          try {
+            // Create final canvas with original image dimensions
+            const finalCanvas = document.createElement('canvas');
+            finalCanvas.width = originalImg.naturalWidth;
+            finalCanvas.height = originalImg.naturalHeight;
+            const finalCtx = finalCanvas.getContext('2d');
+
+            if (!finalCtx) {
+              reject(new Error('Could not get final canvas context'));
+              return;
+            }
+
+            // Draw the original upscaled image as base layer
+            finalCtx.drawImage(originalImg, 0, 0);
+
+            // Create temporary canvas for masked replacement image
+            const maskedYCanvas = document.createElement('canvas');
+            maskedYCanvas.width = cropData.width;
+            maskedYCanvas.height = cropData.height;
+            const maskedYCtx = maskedYCanvas.getContext('2d');
+
+            if (!maskedYCtx) {
+              reject(new Error('Could not get masked Y canvas context'));
+              return;
+            }
+
+            // Draw replacement image onto masked canvas
+            maskedYCtx.drawImage(replacementImg, 0, 0, cropData.width, cropData.height);
+
+            // Create blurred mask canvas
+            const blurredMaskCanvas = document.createElement('canvas');
+            blurredMaskCanvas.width = cropData.width;
+            blurredMaskCanvas.height = cropData.height;
+            const blurredMaskCtx = blurredMaskCanvas.getContext('2d');
+
+            if (!blurredMaskCtx) {
+              reject(new Error('Could not get blurred mask canvas context'));
+              return;
+            }
+
+            // Calculate scaling factors from mask canvas to crop area
+            const scaleX = cropData.width / maskCanvas.offsetWidth;
+            const scaleY = cropData.height / maskCanvas.offsetHeight;
+
+            // Calculate source rectangle on mask canvas that corresponds to crop area
+            const maskSrcX = cropData.x / originalImg.naturalWidth * maskCanvas.offsetWidth;
+            const maskSrcY = cropData.y / originalImg.naturalHeight * maskCanvas.offsetHeight;
+            const maskSrcWidth = cropData.width / originalImg.naturalWidth * maskCanvas.offsetWidth;
+            const maskSrcHeight = cropData.height / originalImg.naturalHeight * maskCanvas.offsetHeight;
+
+            // Draw the relevant portion of the mask canvas onto blurred mask canvas
+            blurredMaskCtx.drawImage(
+              maskCanvas,
+              maskSrcX, maskSrcY, maskSrcWidth, maskSrcHeight,
+              0, 0, cropData.width, cropData.height
+            );
+
+            // Apply blur to the mask
+            blurredMaskCtx.filter = 'blur(15px)';
+            blurredMaskCtx.drawImage(blurredMaskCanvas, 0, 0);
+            blurredMaskCtx.filter = 'none';
+
+            // Apply mask to replacement image using destination-in composite operation
+            maskedYCtx.globalCompositeOperation = 'destination-in';
+            maskedYCtx.drawImage(blurredMaskCanvas, 0, 0);
+            maskedYCtx.globalCompositeOperation = 'source-over';
+
+            // Draw the masked replacement image onto final canvas at crop position
+            finalCtx.drawImage(maskedYCanvas, cropData.x, cropData.y);
+
+            const finalDataUrl = finalCanvas.toDataURL('image/png');
+            resolve(finalDataUrl);
+          } catch (error) {
+            reject(error);
+          }
+        }
+      };
+
+      const onImageError = () => {
+        reject(new Error('Failed to load one or more images for masking'));
+      };
+
+      originalImg.crossOrigin = 'anonymous';
+      replacementImg.crossOrigin = 'anonymous';
+      originalImg.onload = onImageLoad;
+      replacementImg.onload = onImageLoad;
+      originalImg.onerror = onImageError;
+      replacementImg.onerror = onImageError;
+      originalImg.src = originalUpscaledImageUrl;
+      replacementImg.src = replacementYImageUrl;
+    });
+  }
+
   static async cropSquareFromCenter(
     imageUrl: string, 
     centerX: number, 

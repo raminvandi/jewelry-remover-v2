@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { X, Brush } from 'lucide-react';
 import { UploadedImage } from '../types';
 import { ImageProcessor } from '../services/imageProcessor';
 
@@ -12,6 +12,38 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
   const [croppedImageX, setCroppedImageX] = useState<string | null>(null);
   const [cropDetails, setCropDetails] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [activeImage, setActiveImage] = useState<string>(image.upscaledUrl || '');
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [brushSize, setBrushSize] = useState(20);
+  
+  const imgRef = useRef<HTMLImageElement>(null);
+  const maskCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Update mask canvas dimensions when image loads or changes
+  useEffect(() => {
+    const updateCanvasDimensions = () => {
+      if (imgRef.current && maskCanvasRef.current) {
+        const img = imgRef.current;
+        const canvas = maskCanvasRef.current;
+        canvas.width = img.offsetWidth;
+        canvas.height = img.offsetHeight;
+        
+        // Clear the canvas
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+    };
+
+    // Update dimensions after image loads
+    if (imgRef.current) {
+      if (imgRef.current.complete) {
+        updateCanvasDimensions();
+      } else {
+        imgRef.current.onload = updateCanvasDimensions;
+      }
+    }
+  }, [activeImage]);
 
   const handleImageClick = async (e: React.MouseEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
@@ -40,6 +72,79 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
       setCropDetails(result.cropDetails);
     } catch (error) {
       console.error('Failed to crop image:', error);
+    }
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!maskCanvasRef.current) return;
+    
+    const canvas = maskCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.beginPath();
+    ctx.arc(x, y, brushSize / 2, 0, 2 * Math.PI);
+    ctx.fill();
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    setIsDrawing(true);
+    draw(e);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isDrawing) {
+      draw(e);
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDrawing(false);
+  };
+
+  const handleMouseLeave = () => {
+    setIsDrawing(false);
+  };
+
+  const handleApplyMask = async () => {
+    if (!maskCanvasRef.current || !cropDetails || !croppedImageX) {
+      alert('Please create a crop and draw a mask first');
+      return;
+    }
+
+    try {
+      const blendedImage = await ImageProcessor.applyMask(
+        image.upscaledUrl!,
+        croppedImageX,
+        maskCanvasRef.current,
+        cropDetails
+      );
+      
+      setActiveImage(blendedImage);
+      
+      // Clear the mask canvas after applying
+      const ctx = maskCanvasRef.current.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
+      }
+    } catch (error) {
+      console.error('Failed to apply mask:', error);
+      alert('Failed to apply mask. Please try again.');
+    }
+  };
+
+  const clearMask = () => {
+    if (maskCanvasRef.current) {
+      const ctx = maskCanvasRef.current.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
+      }
     }
   };
 
@@ -95,16 +200,71 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
         </div>
         
         {/* Image Display */}
-        <div className="p-6 flex justify-center items-center bg-gray-50">
-          <div className="max-w-full max-h-[70vh] overflow-hidden rounded-lg shadow-lg">
-            <img
-              src={activeImage}
-              alt={`Upscaled ${image.originalName}`}
-              className="max-w-full max-h-full object-contain cursor-crosshair"
-              onClick={handleImageClick}
-            />
+        <div className="p-6 bg-gray-50">
+          <div className="flex justify-center items-center mb-4">
+            <div className="relative max-w-full max-h-[60vh] overflow-hidden rounded-lg shadow-lg">
+              <img
+                ref={imgRef}
+                src={activeImage}
+                alt={`Upscaled ${image.originalName}`}
+                className="max-w-full max-h-full object-contain cursor-crosshair"
+                onClick={handleImageClick}
+              />
+              <canvas
+                ref={maskCanvasRef}
+                className="absolute top-0 left-0 cursor-crosshair"
+                style={{ pointerEvents: croppedImageX ? 'auto' : 'none' }}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseLeave}
+              />
+            </div>
           </div>
+          
+          {/* Masking Controls */}
+          {croppedImageX && (
+            <div className="flex justify-center items-center space-x-4 mb-4">
+              <div className="flex items-center space-x-2">
+                <Brush className="w-4 h-4 text-gray-600" />
+                <label className="text-sm font-medium text-gray-700">Brush Size:</label>
+                <input
+                  type="range"
+                  min="5"
+                  max="50"
+                  value={brushSize}
+                  onChange={(e) => setBrushSize(Number(e.target.value))}
+                  className="w-20"
+                />
+                <span className="text-sm text-gray-600 w-8">{brushSize}</span>
+              </div>
+              
+              <button
+                onClick={clearMask}
+                className="px-3 py-1 bg-gray-500 text-white text-sm rounded-md hover:bg-gray-600 transition-colors"
+              >
+                Clear Mask
+              </button>
+              
+              <button
+                onClick={handleApplyMask}
+                className="px-4 py-2 bg-green-600 text-white font-medium rounded-md hover:bg-green-700 transition-colors"
+              >
+                Apply Mask
+              </button>
+            </div>
+          )}
         </div>
+        
+        {/* Instructions */}
+        {croppedImageX && (
+          <div className="px-6 py-3 bg-blue-50 border-t border-blue-200">
+            <p className="text-sm text-blue-800">
+              <strong>Instructions:</strong> Paint over the areas where you want to keep the generated content. 
+              The mask will create a soft, feathered blend between the original and generated images.
+            </p>
+          </div>
+        )}
         
         {/* Cropped Image Preview */}
         {croppedImageX && (
@@ -133,12 +293,10 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
         {/* Footer */}
         <div className="p-4 border-t border-gray-200 bg-gray-50">
           <div className="flex justify-end">
-            <button
+            <img
               onClick={onClose}
               className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
-            >
-              Close
-            </button>
+            />
           </div>
         </div>
       </div>
