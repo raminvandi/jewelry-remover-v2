@@ -9,9 +9,12 @@ interface EditModalProps {
 }
 
 export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
+  // Determine the best source image to start with. Prefer the upscaled version.
+  const sourceImageUrl = image.upscaledUrl || image.jewelryRemovedUrl;
+
   const [croppedImageX, setCroppedImageX] = useState<string | null>(null);
   const [cropDetails, setCropDetails] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-  const [activeImage, setActiveImage] = useState<string>(image.upscaledUrl || '');
+  const [activeImage, setActiveImage] = useState<string>(sourceImageUrl || '');
   const [isDrawing, setIsDrawing] = useState(false);
   const [brushSize, setBrushSize] = useState(20);
   const [isFinalImageReady, setIsFinalImageReady] = useState(false);
@@ -64,7 +67,7 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
     
     try {
       const result = await ImageProcessor.cropSquareFromCenter(
-        image.upscaledUrl!,
+        sourceImageUrl!,
         centerX,
         centerY,
         1024
@@ -121,7 +124,7 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
 
     try {
       const blendedImage = await ImageProcessor.applyMask(
-        image.upscaledUrl!,
+        sourceImageUrl!,
         activeImage,
         maskCanvasRef.current
       );
@@ -165,7 +168,7 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
         const placeholderDataUrl = canvas.toDataURL('image/png');
         
         const compositedImage = await ImageProcessor.replaceArea(
-          image.upscaledUrl!,
+          sourceImageUrl!,
           placeholderDataUrl,
           cropDetails
         );
