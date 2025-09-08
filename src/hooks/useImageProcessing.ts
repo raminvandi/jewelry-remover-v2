@@ -78,23 +78,10 @@ export const useImageProcessing = () => {
     setIsProcessing(false);
   }, [updateImageStatus]);
 
-  const startProductPlacementWorkflow = useCallback(async (image: UploadedImage) => {
-    setIsProcessing(true);
-    const jewelryRemovedUrl = await _performJewelryRemoval(image);
-
-    if (!jewelryRemovedUrl) {
-      setIsProcessing(false);
-      return;
-    }
-    
-    // Update the image object with the result before opening the modal
-    const updatedImage = { ...image, jewelryRemovedUrl, status: 'completed' as const };
-    updateImageStatus(image.id, updatedImage);
-
-    // Now open the modal with the fully prepared image object
-    setEditingImage(updatedImage);
-    setIsProcessing(false);
-  }, [updateImageStatus]);
+  const startProductPlacementWorkflow = useCallback((image: UploadedImage) => {
+    // This function's only job is to set the image that the EditModal will display.
+    setEditingImage(image);
+  }, []); // No dependencies needed
 
   return {
     images,
