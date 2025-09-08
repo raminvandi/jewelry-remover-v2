@@ -212,7 +212,7 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
         {/* Image Display */}
         <div className="p-6 bg-gray-50">
           <div className="flex justify-center items-center mb-4">
-            <div className="relative max-w-full max-h-[60vh] overflow-hidden rounded-lg shadow-lg">
+            <div className="relative aspect-square max-h-[60vh] max-w-[60vh] overflow-hidden rounded-lg shadow-lg">
               <img
                 ref={imgRef}
                 src={activeImage}
