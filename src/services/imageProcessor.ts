@@ -1,0 +1,226 @@
+import { ProcessingResult, GeminiResponse, EnhancorResponse } from '../types';
+
+const IMGBB_API_KEY = '3c0b39d4ea5cc580cbf69990aa847630';
+
+export class ImageProcessor {
+  static async fileToBase64(file: File): Promise<string> {
+    // This function is correct and does not need changes.
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  static async removeJewelry(file: File, hotspot: { x: number, y: number }): Promise<ProcessingResult> {
+    // This function is correct and does not need changes.
+    try {
+      // IMPORTANT: Use the environment variable provided by Vite
+      const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+
+      if (!GEMINI_API_KEY) {
+        throw new Error("Gemini API key is missing. Please check your environment variables.");
+      }
+
+      const base64Image = await this.fileToBase64(file);
+      const mimeType = file.type;
+      const userPrompt = "remove the jewelry at this location";
+      const systemPrompt = `You are an expert photo editor AI. Your task is to perform a natural, localized edit on the provided image based on the user's request.
+User Request: "${userPrompt}"
+Edit Location: Focus on the area around pixel coordinates (x: ${hotspot.x}, y: ${hotspot.y}).
+
+Guidelines:
+- The edit must be realistic and blend seamlessly with the surrounding area.
+- The rest of the image outside the edit area must remain identical.
+- Output ONLY the final edited image. Do not return text.`;
+
+      const requestBody = {
+        contents: [{
+          parts: [{
+            text: systemPrompt
+          }, {
+            inline_data: {
+              mime_type: mimeType,
+              data: base64Image
+            }
+          }]
+        }]
+      };
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+      const data: GeminiResponse = await response.json();
+      const candidate = data.candidates?.[0];
+      if (!candidate) throw new Error('No candidates received from Gemini API');
+      const parts = candidate.content?.parts;
+      if (!parts || parts.length === 0) throw new Error('No content parts received from Gemini API');
+      
+      let imageData = null;
+      let mimeTypeResponse = null;
+      for (const part of parts) {
+        if (part.inline_data?.data) {
+          imageData = part.inline_data.data;
+          mimeTypeResponse = part.inline_data.mime_type;
+          break;
+        }
+        if (part.inlineData?.data) {
+          imageData = part.inlineData.data;
+          mimeTypeResponse = part.inlineData.mimeType;
+          break;
+        }
+      }
+
+      if (!imageData) {
+        console.error('Gemini API Response:', JSON.stringify(data, null, 2));
+        const textPart = parts.find(part => part.text);
+        if (textPart && textPart.text.toLowerCase().includes('cannot directly manipulate')) {
+          return { success: false, error: 'The Gemini API cannot directly manipulate images.' };
+        }
+        return { success: false, error: 'No image data received from Gemini API.' };
+      }
+      const imageUrl = `data:${mimeTypeResponse || mimeType};base64,${imageData}`;
+      return { success: true, imageUrl };
+    } catch (error) {
+      console.error('Gemini API Error:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error occurred' };
+    }
+  }
+
+  static async uploadImageForPublicUrl(base64DataUrl: string): Promise<string> {
+    // This function is correct and does not need changes.
+    try {
+      const base64Data = base64DataUrl.split(',')[1];
+      const formData = new FormData();
+      formData.append('image', base64Data);
+      const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) throw new Error('Failed to upload intermediate image to hosting service.');
+      const result = await response.json();
+      if (!result.success || !result.data.url) throw new Error('Image hosting service did not return a valid URL.');
+      return result.data.url;
+    } catch (error) {
+      console.error("Temporary upload to imgbb failed:", error);
+      throw error;
+    }
+  }
+
+  static async upscaleImage(imageUrl: string): Promise<ProcessingResult> {
+    try {
+      const requestBody = {
+        img_url: imageUrl,
+        mode: "fast",
+        // --- CHANGE #1: ADDED REQUIRED webhookUrl PARAMETER ---
+        // Even though we poll, the API docs say this is required.
+        webhookUrl: "https://example.com/webhook-placeholder"
+      };
+
+      const response = await fetch('/api-enhancor/api/upscaler/v1/queue', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Enhancor API error: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      const taskId = data.requestId;
+
+      if (!data.success || !taskId) {
+        throw new Error(data.error || 'Failed to initiate upscaling with Enhancor');
+      }
+
+      const upscaledUrl = await this.pollUpscalingStatus(taskId);
+      
+      return { success: true, imageUrl: upscaledUrl };
+    } catch (error) {
+      console.error('Enhancor Upscale Error:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error during Enhancor upscaling' };
+    }
+  }
+
+  private static async pollUpscalingStatus(taskId: string): Promise<string> {
+    // --- CHANGE #2: INCREASED TIMEOUT FROM 60s to 120s ---
+    const maxAttempts = 60; // 60 attempts * 2 seconds = 120-second timeout
+    let attempts = 0;
+    let lastResponseJson = null;
+
+    while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        attempts++;
+
+        try {
+            const response = await fetch('/api-enhancor/api/upscaler/v1/status', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ request_id: taskId })
+            });
+
+            if (!response.ok) {
+                console.warn(`[Attempt ${attempts}] Status check failed with HTTP status: ${response.status}. Retrying...`);
+                continue;
+            }
+
+            const data = await response.json();
+            lastResponseJson = data;
+
+            console.log(`[Attempt ${attempts}/${maxAttempts}] Enhancor status response:`, JSON.stringify(data));
+
+            const status = data.status ? String(data.status).toUpperCase() : '';
+            const finalUrl = data.result || data.result_url;
+
+            if (status === 'COMPLETED' && finalUrl) {
+                console.log("Success! Found 'COMPLETED' status and result URL.");
+                return finalUrl;
+            }
+
+            if (status === 'FAILED') {
+                const errorMessage = data.error || 'Enhancor reported that the upscaling process failed.';
+                throw new Error(errorMessage);
+            }
+        } catch (error) {
+            console.error(`Polling attempt ${attempts} encountered an error:`, error);
+            if (attempts >= maxAttempts) {
+              throw error;
+            }
+        }
+    }
+
+    throw new Error(
+      `Upscaling timed out. Last API response was: ${JSON.stringify(lastResponseJson)}`
+    );
+  }
+
+  static downloadImage(url: string, filename: string): void {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+}

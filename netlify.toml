@@ -1,0 +1,16 @@
+# in netlify.toml
+
+[build]
+  # The command is now simpler, as Netlify handles the function build.
+  command = "vite build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+# --- ADD THIS ENTIRE BLOCK ---
+[[redirects]]
+  # The path on your live site that will trigger the function
+  from = "/api-enhancor/*"
+  # The function to execute
+  to = "/.netlify/functions/enhancor"
+  # The HTTP status code (200 means "OK" and that this is a rewrite, not a redirect)
+  status = 200
