@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { UploadedImage } from '../types';
+import { ImageProcessor } from '../services/imageProcessor';
 
 interface EditModalProps {
   image: UploadedImage;
@@ -8,6 +9,37 @@ interface EditModalProps {
 }
 
 export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
+  const [croppedImageX, setCroppedImageX] = useState<string | null>(null);
+
+  const handleImageClick = async (e: React.MouseEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    const rect = img.getBoundingClientRect();
+    
+    // Get click coordinates relative to the displayed image
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    
+    // Calculate the scale factors to convert to natural image coordinates
+    const scaleX = img.naturalWidth / img.offsetWidth;
+    const scaleY = img.naturalHeight / img.offsetHeight;
+    
+    // Convert to natural image coordinates
+    const centerX = Math.round(clickX * scaleX);
+    const centerY = Math.round(clickY * scaleY);
+    
+    try {
+      const croppedDataUrl = await ImageProcessor.cropSquareFromCenter(
+        image.upscaledUrl!,
+        centerX,
+        centerY,
+        1024
+      );
+      setCroppedImageX(croppedDataUrl);
+    } catch (error) {
+      console.error('Failed to crop image:', error);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
@@ -37,10 +69,27 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
             <img
               src={image.upscaledUrl}
               alt={`Upscaled ${image.originalName}`}
-              className="max-w-full max-h-full object-contain"
+              className="max-w-full max-h-full object-contain cursor-crosshair"
+              onClick={handleImageClick}
             />
           </div>
         </div>
+        
+        {/* Cropped Image Preview */}
+        {croppedImageX && (
+          <div className="p-6 border-t border-gray-200 bg-gray-50">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Cropped Selection (1024x1024)</h3>
+            <div className="flex justify-center">
+              <div className="w-64 h-64 border border-gray-300 rounded-lg overflow-hidden shadow-sm">
+                <img
+                  src={croppedImageX}
+                  alt="Cropped selection"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* Footer */}
         <div className="p-4 border-t border-gray-200 bg-gray-50">
