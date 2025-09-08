@@ -1,11 +1,11 @@
 import React from 'react';
 import { Header } from './components/Header';
 import { FileUpload } from './components/FileUpload';
-import { ProcessingQueue } from './components/ProcessingQueue';
+import { ImageManager } from './components/ImageManager';
 import { EditModal } from './components/EditModal';
 import { Statistics } from './components/Statistics';
 import { useImageProcessing } from './hooks/useImageProcessing';
-import { Play, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 
 function App() {
   const {
@@ -21,7 +21,6 @@ function App() {
     startProductPlacementWorkflow
   } = useImageProcessing();
 
-  const pendingImages = images.filter(img => img.status === 'pending');
   const hasImages = images.length > 0;
 
   return (
@@ -56,20 +55,7 @@ function App() {
 
           {/* Action Buttons */}
           {hasImages && (
-            <div className="flex flex-wrap gap-4 justify-center">
-              {pendingImages.length > 0 && (
-                <button
-                  onClick={processAllPendingImages}
-                  disabled={isProcessing}
-                  className="flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <Play className="w-5 h-5" />
-                  <span>
-                    {isProcessing ? 'Processing...' : `Process ${pendingImages.length} Image${pendingImages.length !== 1 ? 's' : ''}`}
-                  </span>
-                </button>
-              )}
-              
+            <div className="flex justify-center">
               <button
                 onClick={clearAll}
                 disabled={isProcessing}
@@ -81,11 +67,12 @@ function App() {
             </div>
           )}
 
-          {/* Processing Queue */}
-          <ProcessingQueue 
+          {/* Image Manager */}
+          <ImageManager 
             images={images} 
             onUpscale={startUpscaleWorkflow}
             onProductPlacement={startProductPlacementWorkflow}
+            onRemove={removeImage}
           />
 
           {/* Information Section */}

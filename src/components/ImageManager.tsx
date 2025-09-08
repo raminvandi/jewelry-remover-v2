@@ -1,15 +1,16 @@
 import React from 'react';
-import { Download, AlertCircle, CheckCircle, Clock, Loader, Image, Sparkles } from 'lucide-react';
+import { Download, AlertCircle, CheckCircle, Clock, Loader, Image, Sparkles, X } from 'lucide-react';
 import { UploadedImage } from '../types';
 import { ImageProcessor } from '../services/imageProcessor';
 
-interface ProcessingQueueProps {
+interface ImageManagerProps {
   images: UploadedImage[];
   onUpscale: (image: UploadedImage) => void;
   onProductPlacement: (image: UploadedImage) => void;
+  onRemove: (id: string) => void;
 }
 
-export const ProcessingQueue: React.FC<ProcessingQueueProps> = ({ images, onUpscale, onProductPlacement }) => {
+export const ImageManager: React.FC<ImageManagerProps> = ({ images, onUpscale, onProductPlacement, onRemove }) => {
   const getStatusIcon = (status: UploadedImage['status']) => {
     switch (status) {
       case 'pending':
@@ -51,25 +52,21 @@ export const ProcessingQueue: React.FC<ProcessingQueueProps> = ({ images, onUpsc
     window.open(imageUrl, '_blank');
   };
 
-  const processingImages = images.filter(img => 
-    img.status !== 'pending' || img.progress > 0
-  );
-
-  if (processingImages.length === 0) {
+  if (images.length === 0) {
     return null;
   }
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-200">
-        <h3 className="text-lg font-semibold text-gray-900">Processing Queue</h3>
+        <h3 className="text-lg font-semibold text-gray-900">Image Manager</h3>
         <p className="text-sm text-gray-600">
-          {processingImages.filter(img => img.status === 'completed').length} of {processingImages.length} completed
+          {images.filter(img => img.status === 'completed').length} of {images.length} completed
         </p>
       </div>
       
       <div className="divide-y divide-gray-200">
-        {processingImages.map((image) => (
+        {images.map((image) => (
           <div key={image.id} className="p-6">
             <div className="flex items-start space-x-4">
               <div className="flex-shrink-0">
@@ -81,6 +78,23 @@ export const ProcessingQueue: React.FC<ProcessingQueueProps> = ({ images, onUpsc
                   />
                 </div>
               </div>
+                {image.status === 'pending' && (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <button
+                      onClick={() => onUpscale(image)}
+                      className="flex-1 text-center px-3 py-2 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors"
+                    >
+                      Upscale
+                    </button>
+                    <button
+                      onClick={() => onProductPlacement(image)}
+                      className="flex-1 text-center px-3 py-2 bg-purple-600 text-white text-sm rounded-md hover:bg-purple-700 transition-colors"
+                    >
+                      Product Placement
+                    </button>
+                  </div>
+                )}
+                
                 {image.status === 'awaiting_choice' && (
                   <div className="flex flex-wrap gap-2">
                     <p className="w-full text-sm text-gray-500 mb-2">Jewelry removal complete. What's next?</p>
@@ -106,6 +120,12 @@ export const ProcessingQueue: React.FC<ProcessingQueueProps> = ({ images, onUpsc
                     {image.originalName}
                   </p>
                   <div className="flex items-center space-x-2">
+                    <button 
+                      onClick={() => onRemove(image.id)} 
+                      className="p-1 hover:bg-red-100 rounded-full transition-colors"
+                    >
+                      <X className="w-4 h-4 text-red-500" />
+                    </button>
                     {getStatusIcon(image.status)}
                   </div>
                 </div>
