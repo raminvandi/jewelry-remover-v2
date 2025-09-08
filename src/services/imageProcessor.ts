@@ -442,10 +442,6 @@ Guidelines:
         reject(new Error('Failed to load one or more images'));
       };
 
-      const onImageError = () => {
-        reject(new Error('Failed to load one or more images'));
-      };
-        }
       originalImg.crossOrigin = 'anonymous';
       replacementImg.crossOrigin = 'anonymous';
       originalImg.onload = onImageLoad;
