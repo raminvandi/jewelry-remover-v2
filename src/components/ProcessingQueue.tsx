@@ -5,10 +5,11 @@ import { ImageProcessor } from '../services/imageProcessor';
 
 interface ProcessingQueueProps {
   images: UploadedImage[];
-  onRefineImage: (image: UploadedImage) => void;
+  onUpscale: (image: UploadedImage) => void;
+  onProductPlacement: (image: UploadedImage) => void;
 }
 
-export const ProcessingQueue: React.FC<ProcessingQueueProps> = ({ images, onRefineImage }) => {
+export const ProcessingQueue: React.FC<ProcessingQueueProps> = ({ images, onUpscale, onProductPlacement }) => {
   const getStatusIcon = (status: UploadedImage['status']) => {
     switch (status) {
       case 'pending':
@@ -16,6 +17,8 @@ export const ProcessingQueue: React.FC<ProcessingQueueProps> = ({ images, onRefi
       case 'processing-stage1':
       case 'processing-stage2':
         return <Loader className="w-5 h-5 text-blue-500 animate-spin" />;
+      case 'awaiting_choice':
+        return <CheckCircle className="w-5 h-5 text-blue-500" />;
       case 'completed':
         return <CheckCircle className="w-5 h-5 text-green-500" />;
       case 'error':
@@ -33,6 +36,8 @@ export const ProcessingQueue: React.FC<ProcessingQueueProps> = ({ images, onRefi
         return 'Removing jewelry...';
       case 'processing-stage2':
         return 'Upscaling image...';
+      case 'awaiting_choice':
+        return 'Ready for next step';
       case 'completed':
         return 'Processing complete';
       case 'error':
@@ -76,6 +81,24 @@ export const ProcessingQueue: React.FC<ProcessingQueueProps> = ({ images, onRefi
                   />
                 </div>
               </div>
+                {image.status === 'awaiting_choice' && (
+                  <div className="flex flex-wrap gap-2">
+                    <p className="w-full text-sm text-gray-500 mb-2">Jewelry removal complete. What's next?</p>
+                    <button
+                      onClick={() => onUpscale(image)}
+                      className="flex items-center space-x-2 px-3 py-2 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 transition-colors"
+                    >
+                      <span>Upscale (Legacy)</span>
+                    </button>
+                    <button
+                      onClick={() => onProductPlacement(image)}
+                      className="flex items-center space-x-2 px-3 py-2 bg-purple-600 text-white text-sm rounded-md hover:bg-purple-700 transition-colors"
+                    >
+                      <span>Product Placement</span>
+                    </button>
+                  </div>
+                )}
+                
               
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-2">
@@ -130,11 +153,11 @@ export const ProcessingQueue: React.FC<ProcessingQueueProps> = ({ images, onRefi
                     
                     {image.upscaledUrl && (
                       <button
-                        onClick={() => onRefineImage(image)}
+                        onClick={() => onProductPlacement(image)}
                         className="flex items-center space-x-2 px-3 py-2 bg-purple-600 text-white text-sm rounded-md hover:bg-purple-700 transition-colors"
                       >
                         <Sparkles className="w-4 h-4" />
-                        <span>Refine Image</span>
+                        <span>Product Placement</span>
                       </button>
                     )}
                   </div>
