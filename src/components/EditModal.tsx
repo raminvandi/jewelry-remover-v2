@@ -10,6 +10,8 @@ interface EditModalProps {
 
 export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
   const [croppedImageX, setCroppedImageX] = useState<string | null>(null);
+  const [cropDetails, setCropDetails] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [activeImage, setActiveImage] = useState<string>(image.upscaledUrl || '');
 
   const handleImageClick = async (e: React.MouseEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
@@ -28,15 +30,44 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
     const centerY = Math.round(clickY * scaleY);
     
     try {
-      const croppedDataUrl = await ImageProcessor.cropSquareFromCenter(
+      const result = await ImageProcessor.cropSquareFromCenter(
         image.upscaledUrl!,
         centerX,
         centerY,
         1024
       );
-      setCroppedImageX(croppedDataUrl);
+      setCroppedImageX(result.dataUrl);
+      setCropDetails(result.cropDetails);
     } catch (error) {
       console.error('Failed to crop image:', error);
+    }
+  };
+
+  // Simulate nanoBananaResultY for testing (temporary)
+  const handleTestComposite = async () => {
+    if (!cropDetails) return;
+    
+    try {
+      // Create a simple colored square as placeholder replacement
+      const canvas = document.createElement('canvas');
+      canvas.width = 1024;
+      canvas.height = 1024;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#ff6b6b'; // Red color as placeholder
+        ctx.fillRect(0, 0, 1024, 1024);
+        const placeholderDataUrl = canvas.toDataURL('image/png');
+        
+        const compositedImage = await ImageProcessor.replaceArea(
+          image.upscaledUrl!,
+          placeholderDataUrl,
+          cropDetails
+        );
+        
+        setActiveImage(compositedImage);
+      }
+    } catch (error) {
+      console.error('Failed to composite image:', error);
     }
   };
 
@@ -67,7 +98,7 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
         <div className="p-6 flex justify-center items-center bg-gray-50">
           <div className="max-w-full max-h-[70vh] overflow-hidden rounded-lg shadow-lg">
             <img
-              src={image.upscaledUrl}
+              src={activeImage}
               alt={`Upscaled ${image.originalName}`}
               className="max-w-full max-h-full object-contain cursor-crosshair"
               onClick={handleImageClick}
@@ -79,7 +110,7 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
         {croppedImageX && (
           <div className="p-6 border-t border-gray-200 bg-gray-50">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Cropped Selection (1024x1024)</h3>
-            <div className="flex justify-center">
+            <div className="flex justify-center items-center space-x-6">
               <div className="w-64 h-64 border border-gray-300 rounded-lg overflow-hidden shadow-sm">
                 <img
                   src={croppedImageX}
@@ -87,6 +118,14 @@ export const EditModal: React.FC<EditModalProps> = ({ image, onClose }) => {
                   className="w-full h-full object-cover"
                 />
               </div>
+              {/* Temporary test button for compositing */}
+              <button
+                onClick={handleTestComposite}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+                disabled={!cropDetails}
+              >
+                Test Composite (Red Square)
+              </button>
             </div>
           </div>
         )}

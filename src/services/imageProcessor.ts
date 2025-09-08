@@ -223,4 +223,124 @@ Guidelines:
     link.click();
     document.body.removeChild(link);
   }
+
+  static async cropSquareFromCenter(
+    imageUrl: string, 
+    centerX: number, 
+    centerY: number, 
+    outputSize: number
+  ): Promise<{ dataUrl: string; cropDetails: { x: number; y: number; width: number; height: number } }> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = outputSize;
+        canvas.height = outputSize;
+        const ctx = canvas.getContext('2d');
+        
+        if (!ctx) {
+          reject(new Error('Could not get canvas context'));
+          return;
+        }
+
+        // Fill with white background
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, outputSize, outputSize);
+
+        const imgWidth = img.naturalWidth;
+        const imgHeight = img.naturalHeight;
+
+        let sx, sy, sWidth, sHeight;
+        let dx = 0, dy = 0, dWidth = outputSize, dHeight = outputSize;
+
+        if (imgWidth < outputSize && imgHeight < outputSize) {
+          // Image is smaller than output size - center it
+          sx = 0;
+          sy = 0;
+          sWidth = imgWidth;
+          sHeight = imgHeight;
+          dx = (outputSize - imgWidth) / 2;
+          dy = (outputSize - imgHeight) / 2;
+          dWidth = imgWidth;
+          dHeight = imgHeight;
+        } else {
+          // Image is larger - crop from center point
+          const halfSize = outputSize / 2;
+          sx = Math.max(0, Math.min(centerX - halfSize, imgWidth - outputSize));
+          sy = Math.max(0, Math.min(centerY - halfSize, imgHeight - outputSize));
+          sWidth = outputSize;
+          sHeight = outputSize;
+        }
+
+        ctx.drawImage(img, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight);
+        
+        const dataUrl = canvas.toDataURL('image/png');
+        const cropDetails = { x: sx, y: sy, width: sWidth, height: sHeight };
+        
+        resolve({ dataUrl, cropDetails });
+      };
+      
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = imageUrl;
+    });
+  }
+
+  static async replaceArea(
+    originalImageUrl: string,
+    replacementImageUrl: string,
+    cropData: { x: number; y: number; width: number; height: number }
+  ): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const originalImg = new Image();
+      const replacementImg = new Image();
+      let loadedCount = 0;
+
+      const onImageLoad = () => {
+        loadedCount++;
+        if (loadedCount === 2) {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = originalImg.naturalWidth;
+            canvas.height = originalImg.naturalHeight;
+            const ctx = canvas.getContext('2d');
+
+            if (!ctx) {
+              reject(new Error('Could not get canvas context'));
+              return;
+            }
+
+            // Draw the original image
+            ctx.drawImage(originalImg, 0, 0);
+
+            // Draw the replacement image on top at the specified location
+            ctx.drawImage(
+              replacementImg,
+              cropData.x,
+              cropData.y,
+              cropData.width,
+              cropData.height
+            );
+
+            const compositedDataUrl = canvas.toDataURL('image/png');
+            resolve(compositedDataUrl);
+          } catch (error) {
+            reject(error);
+          }
+      const onImageError = () => {
+        reject(new Error('Failed to load one or more images'));
+      };
+        }
+      originalImg.crossOrigin = 'anonymous';
+      replacementImg.crossOrigin = 'anonymous';
+      originalImg.onload = onImageLoad;
+      replacementImg.onload = onImageLoad;
+      originalImg.onerror = onImageError;
+      replacementImg.onerror = onImageError;
+      };
+      originalImg.src = originalImageUrl;
+      replacementImg.src = replacementImageUrl;
+    });
+  }
 }
