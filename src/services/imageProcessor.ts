@@ -435,6 +435,13 @@ Guidelines:
           } catch (error) {
             reject(error);
           }
+        }
+      };
+
+      const onImageError = () => {
+        reject(new Error('Failed to load one or more images'));
+      };
+
       const onImageError = () => {
         reject(new Error('Failed to load one or more images'));
       };
@@ -445,7 +452,6 @@ Guidelines:
       replacementImg.onload = onImageLoad;
       originalImg.onerror = onImageError;
       replacementImg.onerror = onImageError;
-      };
       originalImg.src = originalImageUrl;
       replacementImg.src = replacementImageUrl;
     });
