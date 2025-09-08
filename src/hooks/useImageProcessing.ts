@@ -92,6 +92,40 @@ export const useImageProcessing = () => {
     setImages([]);
   }, [images]);
 
+  const startUpscaleWorkflow = useCallback(async (image: UploadedImage) => {
+    if (!image.jewelryRemovedUrl) {
+      console.error("Cannot start upscale workflow without a jewelry-removed image.");
+      return;
+    }
+
+    try {
+      updateImageStatus(image.id, { status: 'processing-stage2', progress: 65 });
+      const publicUrl = await ImageProcessor.uploadImageForPublicUrl(image.jewelryRemovedUrl);
+
+      updateImageStatus(image.id, { progress: 80 });
+      const upscalingResult = await ImageProcessor.upscaleImage(publicUrl);
+
+      if (!upscalingResult.success) {
+        throw new Error(upscalingResult.error || "Upscaling failed");
+      }
+
+      updateImageStatus(image.id, {
+        status: 'completed',
+        progress: 100,
+        upscaledUrl: upscalingResult.imageUrl,
+        error: undefined
+      });
+    } catch (error) {
+      updateImageStatus(image.id, {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Upscaling process failed',
+      });
+    }
+  }, [updateImageStatus]);
+
+  const startProductPlacementWorkflow = useCallback((image: UploadedImage) => {
+    setEditingImage(image);
+  }, []);
   return {
     images,
     isProcessing,
@@ -100,6 +134,8 @@ export const useImageProcessing = () => {
     addImages,
     removeImage,
     processAllPendingImages,
-    clearAll
+    clearAll,
+    startUpscaleWorkflow,
+    startProductPlacementWorkflow
   };
 };

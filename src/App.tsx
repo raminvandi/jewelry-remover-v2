@@ -16,7 +16,9 @@ function App() {
     addImages,
     removeImage,
     processAllPendingImages,
-    clearAll
+    clearAll,
+    startUpscaleWorkflow,
+    startProductPlacementWorkflow
   } = useImageProcessing();
 
   const pendingImages = images.filter(img => img.status === 'pending');
@@ -82,7 +84,8 @@ function App() {
           {/* Processing Queue */}
           <ProcessingQueue 
             images={images} 
-            onRefineImage={setEditingImage}
+            onUpscale={startUpscaleWorkflow}
+            onProductPlacement={startProductPlacementWorkflow}
           />
 
           {/* Information Section */}
